@@ -1,4 +1,4 @@
-# K-Map and Tabulation Solver
+# K-Map made Easy
 
 A browser-based Boolean simplification tool built with React, TypeScript, Vite, Tailwind CSS, and shadcn-style UI components.
 
