@@ -6,10 +6,12 @@ services:
     branch: main
     autoDeploy: true
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    startCommand: python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: 3.14.3
       - key: FRONTEND_ORIGINS
         value: https://your-vercel-app.vercel.app,http://localhost:5173,http://127.0.0.1:5173
+      - key: FRONTEND_ORIGIN_REGEX
+        value: ^https://.*\.vercel\.app$

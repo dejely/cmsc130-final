@@ -31,12 +31,14 @@ app.add_middleware(
         ).split(",")
         if origin.strip()
     ],
+    allow_origin_regex=os.getenv("FRONTEND_ORIGIN_REGEX", r"^https://.*\.vercel\.app$"),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
 @app.get("/")
+@app.head("/")
 def root() -> dict[str, str]:
     return {"status": "ok", "service": "Boolean Solver API"}
 
