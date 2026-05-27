@@ -36,6 +36,16 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    return {"status": "ok", "service": "Boolean Solver API"}
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.post("/api/solve", response_model=SolveResponse)
 def solve(request: SolveRequest) -> SolveResponse:
     errors = validate_variable_names(request.variableCount, request.variableNames)
