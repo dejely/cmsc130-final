@@ -18,9 +18,10 @@ import { SectionTitle } from './section-title'
 type KMapPanelProps = {
   maxTerm: number
   solution: SolveResult | null
+  isSolving: boolean
 }
 
-export function KMapPanel({ maxTerm, solution }: KMapPanelProps) {
+export function KMapPanel({ maxTerm, solution, isSolving }: KMapPanelProps) {
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-4">
@@ -31,7 +32,13 @@ export function KMapPanel({ maxTerm, solution }: KMapPanelProps) {
         {solution ? (
           <KMapView solution={solution} />
         ) : (
-          <EmptyState message="Fix the input errors to render the map." />
+          <EmptyState
+            message={
+              isSolving
+                ? 'Solving with the Python backend.'
+                : 'Fix the input errors to render the map.'
+            }
+          />
         )}
       </CardContent>
     </Card>

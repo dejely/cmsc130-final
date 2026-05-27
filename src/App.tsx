@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { AppHeader } from '@/components/solver/app-header'
 import { ExampleModules } from '@/components/solver/example-modules'
@@ -7,15 +7,18 @@ import { KMapPanel } from '@/components/solver/kmap-panel'
 import { SolutionSections } from '@/components/solver/solution-sections'
 import type { CircuitExample, ExampleOutput } from '@/data/circuit-examples'
 import {
-  generateVerilogModule,
   getDefaultVariableNames,
   getMaxTerm,
-  parseTermList,
-  solveBooleanFunction,
-  validateTerms,
+  requestSolve,
+  requestVerilogModule,
+  type SolveResult,
   type VariableCount,
 } from '@/solver'
 
+/**
+ * Coordinates the Boolean solver workflow:
+ * user input -> Python API -> simplified results -> rendered panels.
+ */
 function App() {
   const [variableCount, setVariableCount] = useState<VariableCount>(2)
   const [variableNames, setVariableNames] = useState<string[]>(
@@ -24,59 +27,88 @@ function App() {
   const [mintermInput, setMintermInput] = useState('1, 3')
   const [dontCareInput, setDontCareInput] = useState('')
   const [activeExample, setActiveExample] = useState('custom')
+  const [solution, setSolution] = useState<SolveResult | null>(null)
+  const [errors, setErrors] = useState<string[]>([])
+  const [isSolving, setIsSolving] = useState(false)
+  const [customVerilog, setCustomVerilog] = useState('')
 
   const maxTerm = getMaxTerm(variableCount)
-  const parsedMinterms = useMemo(
-    () => parseTermList(mintermInput, 'Minterms', maxTerm),
-    [maxTerm, mintermInput],
-  )
-  const parsedDontCares = useMemo(
-    () => parseTermList(dontCareInput, "Don't-cares", maxTerm),
-    [dontCareInput, maxTerm],
-  )
-  const validationErrors = useMemo(
-    () => validateTerms(parsedMinterms.values, parsedDontCares.values),
-    [parsedDontCares.values, parsedMinterms.values],
-  )
-  const errors = useMemo(
-    () => [
-      ...parsedMinterms.errors,
-      ...parsedDontCares.errors,
-      ...validationErrors,
-    ],
-    [parsedDontCares.errors, parsedMinterms.errors, validationErrors],
-  )
-  const hasErrors = errors.length > 0
 
-  const solution = useMemo(() => {
-    if (hasErrors) {
-      return null
-    }
+  useEffect(() => {
+    const controller = new AbortController()
 
-    return solveBooleanFunction(
-      variableCount,
-      variableNames,
-      parsedMinterms.values,
-      parsedDontCares.values,
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) {
+        setIsSolving(true)
+      }
+    })
+
+    requestSolve(
+      {
+        variableCount,
+        variableNames,
+        mintermInput,
+        dontCareInput,
+      },
+      controller.signal,
     )
-  }, [
-    hasErrors,
-    parsedDontCares.values,
-    parsedMinterms.values,
-    variableCount,
-    variableNames,
-  ])
-  const customVerilog = useMemo(() => {
+      .then((response) => {
+        setSolution(response.result)
+        setErrors(response.errors)
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+
+        setSolution(null)
+        setErrors([
+          'The Python backend is not responding. Start it with npm run dev:backend.',
+        ])
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsSolving(false)
+        }
+      })
+
+    return () => controller.abort()
+  }, [dontCareInput, mintermInput, variableCount, variableNames])
+
+  useEffect(() => {
     if (!solution) {
-      return ''
+      return
     }
 
-    return generateVerilogModule('boolean_solver', variableNames, [
-      { name: 'Y', expression: solution.sop.verilogExpression },
-    ])
-  }, [solution, variableNames])
+    const controller = new AbortController()
 
+    requestVerilogModule(
+      {
+        moduleName: 'boolean_solver',
+        variableCount,
+        variableNames,
+        outputs: [{ name: 'Y', expression: solution.sop.verilogExpression }],
+      },
+      controller.signal,
+    )
+      .then((response) => setCustomVerilog(response.code))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+
+        setCustomVerilog('Unable to generate Verilog module from the backend.')
+      })
+
+    return () => controller.abort()
+  }, [solution, variableCount, variableNames])
+
+  /** Restores the initial two-variable example and clears any loaded module. */
   const resetSolver = () => {
+    setSolution(null)
+    setErrors([])
+    setCustomVerilog('')
+    setIsSolving(true)
     setVariableCount(2)
     setVariableNames(getDefaultVariableNames(2))
     setMintermInput('1, 3')
@@ -84,8 +116,16 @@ function App() {
     setActiveExample('custom')
   }
 
+  /**
+   * Changing variable count invalidates existing terms because the legal term
+   * range and variable names both change.
+   */
   const handleVariableCountChange = (nextValue: string) => {
     const nextCount = Number(nextValue) as VariableCount
+    setSolution(null)
+    setErrors([])
+    setCustomVerilog('')
+    setIsSolving(true)
     setVariableCount(nextCount)
     setVariableNames(getDefaultVariableNames(nextCount))
     setMintermInput('')
@@ -93,17 +133,32 @@ function App() {
     setActiveExample('custom')
   }
 
+  /** Marks the solver as custom as soon as the user edits minterms directly. */
   const handleMintermInputChange = (nextValue: string) => {
+    setSolution(null)
+    setErrors([])
+    setCustomVerilog('')
+    setIsSolving(true)
     setMintermInput(nextValue)
     setActiveExample('custom')
   }
 
+  /** Marks the solver as custom as soon as the user edits don't-care terms. */
   const handleDontCareInputChange = (nextValue: string) => {
+    setSolution(null)
+    setErrors([])
+    setCustomVerilog('')
+    setIsSolving(true)
     setDontCareInput(nextValue)
     setActiveExample('custom')
   }
 
+  /** Loads one output from an example circuit into the shared solver inputs. */
   const loadOutput = (example: CircuitExample, output: ExampleOutput) => {
+    setSolution(null)
+    setErrors([])
+    setCustomVerilog('')
+    setIsSolving(true)
     setVariableCount(example.variableCount)
     setVariableNames(example.variableNames)
     setMintermInput(output.minterms.join(', '))
@@ -122,9 +177,9 @@ function App() {
           mintermInput={mintermInput}
           dontCareInput={dontCareInput}
           maxTerm={maxTerm}
-          parsedMinterms={parsedMinterms}
-          parsedDontCares={parsedDontCares}
+          solution={solution}
           errors={errors}
+          isSolving={isSolving}
           activeExample={activeExample}
           onVariableCountChange={handleVariableCountChange}
           onMintermInputChange={handleMintermInputChange}
@@ -132,7 +187,7 @@ function App() {
           onReset={resetSolver}
           onLoadOutput={loadOutput}
         />
-        <KMapPanel maxTerm={maxTerm} solution={solution} />
+        <KMapPanel maxTerm={maxTerm} solution={solution} isSolving={isSolving} />
       </section>
 
       {solution ? (

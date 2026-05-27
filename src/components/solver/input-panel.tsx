@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { CIRCUIT_EXAMPLES, type CircuitExample, type ExampleOutput } from '@/data/circuit-examples'
-import { formatTermSet, type ParsedTerms, type VariableCount } from '@/solver'
+import { formatTermSet, type SolveResult, type VariableCount } from '@/solver'
 import { SectionTitle } from './section-title'
 
 type InputPanelProps = {
@@ -23,9 +23,9 @@ type InputPanelProps = {
   mintermInput: string
   dontCareInput: string
   maxTerm: number
-  parsedMinterms: ParsedTerms
-  parsedDontCares: ParsedTerms
+  solution: SolveResult | null
   errors: string[]
+  isSolving: boolean
   activeExample: string
   onVariableCountChange: (nextValue: string) => void
   onMintermInputChange: (nextValue: string) => void
@@ -40,9 +40,9 @@ export function InputPanel({
   mintermInput,
   dontCareInput,
   maxTerm,
-  parsedMinterms,
-  parsedDontCares,
+  solution,
   errors,
+  isSolving,
   activeExample,
   onVariableCountChange,
   onMintermInputChange,
@@ -108,7 +108,11 @@ export function InputPanel({
         <Alert variant={errors.length > 0 ? 'destructive' : 'default'}>
           <AlertCircle />
           <AlertTitle>
-            {errors.length > 0 ? 'Input needs attention' : 'Ready to solve'}
+            {errors.length > 0
+              ? 'Input needs attention'
+              : isSolving
+                ? 'Solving with Python'
+                : 'Ready to solve'}
           </AlertTitle>
           <AlertDescription>
             {errors.length > 0 ? (
@@ -117,11 +121,15 @@ export function InputPanel({
                   <li key={error}>{error}</li>
                 ))}
               </ul>
-            ) : (
+            ) : isSolving ? (
+              <p>Sending the current terms to the Python backend.</p>
+            ) : solution ? (
               <p>
-                Solving terms {formatTermSet(parsedMinterms.values)} with
-                don't-cares {formatTermSet(parsedDontCares.values)}.
+                Solving terms {formatTermSet(solution.minterms)} with
+                don't-cares {formatTermSet(solution.dontCares)}.
               </p>
+            ) : (
+              <p>Waiting for the Python backend solver.</p>
             )}
           </AlertDescription>
         </Alert>

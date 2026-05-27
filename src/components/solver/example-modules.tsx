@@ -1,4 +1,5 @@
 import { Code2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import {
   Card,
@@ -7,11 +8,51 @@ import {
   CardHeader,
 } from '@/components/ui/card'
 import { CIRCUIT_EXAMPLES } from '@/data/circuit-examples'
-import { generateVerilogModule, solveBooleanFunction } from '@/solver'
+import { requestVerilogModule } from '@/solver'
 import { CodeBlock } from './code-block'
 import { SectionTitle } from './section-title'
 
 export function ExampleModules() {
+  const [codes, setCodes] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    Promise.all(
+      CIRCUIT_EXAMPLES.map((example) =>
+        requestVerilogModule(
+          {
+            moduleName: example.moduleName,
+            variableCount: example.variableCount,
+            variableNames: example.variableNames,
+            outputs: example.outputs.map((output) => ({
+              name: output.name,
+              minterms: output.minterms,
+            })),
+          },
+          controller.signal,
+        ).then((response) => [example.id, response.code] as const),
+      ),
+    )
+      .then((entries) => setCodes(Object.fromEntries(entries)))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+
+        setCodes(
+          Object.fromEntries(
+            CIRCUIT_EXAMPLES.map((example) => [
+              example.id,
+              'Unable to load this module from the Python backend.',
+            ]),
+          ),
+        )
+      })
+
+    return () => controller.abort()
+  }, [])
+
   return (
     <Card>
       <CardHeader>
@@ -24,20 +65,6 @@ export function ExampleModules() {
       <CardContent>
         <div className="grid gap-5 lg:grid-cols-2">
           {CIRCUIT_EXAMPLES.map((example) => {
-            const outputs = example.outputs.map((output) => {
-              const result = solveBooleanFunction(
-                example.variableCount,
-                example.variableNames,
-                output.minterms,
-                [],
-              )
-
-              return {
-                name: output.name,
-                expression: result.sop.verilogExpression,
-              }
-            })
-
             return (
               <div key={example.id} className="grid gap-3 rounded-lg border p-4">
                 <div>
@@ -47,11 +74,7 @@ export function ExampleModules() {
                   <CardDescription>{example.moduleName}</CardDescription>
                 </div>
                 <CodeBlock
-                  code={generateVerilogModule(
-                    example.moduleName,
-                    example.variableNames,
-                    outputs,
-                  )}
+                  code={codes[example.id] ?? 'Loading module from Python backend...'}
                 />
               </div>
             )
